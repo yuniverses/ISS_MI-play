@@ -14,7 +14,9 @@ function App() {
   const [timeRemaining, setTimeRemaining] = useState(30);
   const [guessInput, setGuessInput] = useState('');
   const [guessResult, setGuessResult] = useState(null);
-  const [bubbles, setBubbles] = useState([]); // 懸浮泡泡列表
+  const [messages, setMessages] = useState([]); // 聊天訊息歷史（不自動清除）
+  const [showChat, setShowChat] = useState(false); // 是否顯示聊天室
+  const chatContainerRef = useRef(null); // 聊天容器引用，用於滾動
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentColor, setCurrentColor] = useState(COLORS[0]);
   const [currentWidth, setCurrentWidth] = useState(3);
@@ -23,6 +25,10 @@ function App() {
   const ctxRef = useRef(null);
   const lastPointRef = useRef(null);
   const roomStateRef = useRef(null); // 用於事件監聽器中訪問最新狀態
+  
+  // 固定手機版畫布尺寸（所有設備都使用這個尺寸）
+  const CANVAS_WIDTH = 375; // 手機版寬度（CSS 像素）
+  const CANVAS_HEIGHT = 500; // 手機版高度（CSS 像素）
 
   useEffect(() => {
     const newSocket = io('http://localhost:3001');
@@ -56,10 +62,11 @@ function App() {
       // 確保 context 存在
       if (!ctxRef.current && canvasRef.current) {
         const canvas = canvasRef.current;
-        const rect = canvas.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
-        canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-        canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+        canvas.width = Math.floor(CANVAS_WIDTH * dpr);
+        canvas.height = Math.floor(CANVAS_HEIGHT * dpr);
+        canvas.style.width = `${CANVAS_WIDTH}px`;
+        canvas.style.height = `${CANVAS_HEIGHT}px`;
         const ctx = canvas.getContext('2d');
         ctxRef.current = ctx;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -68,7 +75,19 @@ function App() {
       }
       
       if (ctxRef.current) {
-        drawStroke(ctxRef.current, stroke);
+        // 確保座標在有效範圍內
+        const clampedStroke = {
+          ...stroke,
+          from: {
+            x: Math.max(0, Math.min(CANVAS_WIDTH, stroke.from.x)),
+            y: Math.max(0, Math.min(CANVAS_HEIGHT, stroke.from.y))
+          },
+          to: {
+            x: Math.max(0, Math.min(CANVAS_WIDTH, stroke.to.x)),
+            y: Math.max(0, Math.min(CANVAS_HEIGHT, stroke.to.y))
+          }
+        };
+        drawStroke(ctxRef.current, clampedStroke);
       } else {
         console.error('無法繪製筆觸：context 不存在');
       }
@@ -76,14 +95,14 @@ function App() {
 
     newSocket.on('canvas-cleared', () => {
       if (ctxRef.current) {
-        ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        ctxRef.current.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       }
     });
 
     newSocket.on('your-turn-to-draw', ({ word }) => {
       setCurrentWord(word);
       if (ctxRef.current) {
-        ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        ctxRef.current.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       }
     });
 
@@ -97,13 +116,32 @@ function App() {
       }
     });
 
-    // 懸浮泡泡事件（短暫顯示其他人的猜測）
+    // 聊天訊息事件（保存所有猜測訊息）
     newSocket.on('guess-bubble', (payload) => {
       const id = `${payload.userId}-${Date.now()}`;
-      setBubbles((prev) => [...prev.slice(-4), { id, ...payload }]);
-      setTimeout(() => {
-        setBubbles((prev) => prev.filter((b) => b.id !== id));
-      }, 2000);
+      const newMessage = {
+        id,
+        ...payload,
+        timestamp: Date.now()
+      };
+      
+      setMessages((prev) => [...prev, newMessage]);
+      
+      // 只有猜題者才會自動展開聊天室，畫畫者不會自動展開
+      const currentState = roomStateRef.current;
+      const isPainter = currentState?.currentPainter === newSocket.id;
+      if (!isPainter) {
+        setShowChat(true); // 猜題者有新訊息時顯示聊天室
+      }
+      
+      // 如果聊天室已打開，自動滾動到底部
+      if (!isPainter) {
+        setTimeout(() => {
+          if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          }
+        }, 100);
+      }
     });
 
     newSocket.on('timer-update', ({ remaining }) => {
@@ -114,8 +152,9 @@ function App() {
       setCurrentWord(null);
       setGuessResult(null);
       setGuessInput('');
+      // 不清除聊天訊息，保留歷史記錄
       if (ctxRef.current) {
-        ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        ctxRef.current.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       }
     });
 
@@ -127,58 +166,30 @@ function App() {
   useEffect(() => {
     if (canvasRef.current) {
       const canvas = canvasRef.current;
+      const dpr = window.devicePixelRatio || 1;
       
-      // 設置畫布尺寸（只在初始化時執行，不會清除內容）
-      const resizeCanvas = () => {
-        if (!canvas) return;
-        const rect = canvas.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        
-        // 只在尺寸真的改變時才重新設置（避免清除內容）
-        const newWidth = Math.max(1, Math.floor(rect.width * dpr));
-        const newHeight = Math.max(1, Math.floor(rect.height * dpr));
-        
-        if (canvas.width !== newWidth || canvas.height !== newHeight) {
-          // 保存當前畫布內容
-          const imageData = ctxRef.current ? ctxRef.current.getImageData(0, 0, canvas.width / dpr, canvas.height / dpr) : null;
-          
-          // 設置 canvas 尺寸（這會重置 context，所以要在設置後重新獲取）
-          canvas.width = newWidth;
-          canvas.height = newHeight;
-          
-          // 重新獲取 context（因為設置 width/height 會重置它）
-          const ctx = canvas.getContext('2d');
-          ctxRef.current = ctx;
-          
-          // 設置縮放和繪圖屬性
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-          
-          // 恢復畫布內容（如果有的話）
-          if (imageData) {
-            ctx.putImageData(imageData, 0, 0);
-          }
-        }
-        
-        // 更新當前顏色和寬度（不重置 canvas）
-        if (ctxRef.current) {
-          ctxRef.current.strokeStyle = currentColor;
-          ctxRef.current.lineWidth = currentWidth;
-        }
-      };
-
-      resizeCanvas();
+      // 使用固定的手機版尺寸
+      const canvasPixelWidth = Math.floor(CANVAS_WIDTH * dpr);
+      const canvasPixelHeight = Math.floor(CANVAS_HEIGHT * dpr);
       
-      // 延遲初始化，確保 DOM 已完全渲染
-      const timer = setTimeout(resizeCanvas, 100);
+      // 設置 canvas 的實際像素尺寸
+      canvas.width = canvasPixelWidth;
+      canvas.height = canvasPixelHeight;
       
-      window.addEventListener('resize', resizeCanvas);
-
-      return () => {
-        clearTimeout(timer);
-        window.removeEventListener('resize', resizeCanvas);
-      };
+      // 設置 CSS 尺寸（固定手機版尺寸）
+      canvas.style.width = `${CANVAS_WIDTH}px`;
+      canvas.style.height = `${CANVAS_HEIGHT}px`;
+      
+      // 獲取 context 並設置縮放
+      const ctx = canvas.getContext('2d');
+      ctxRef.current = ctx;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = currentColor;
+      ctx.lineWidth = currentWidth;
+      
+      console.log('Canvas initialized with fixed size:', { width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
     }
   }, []); // 只在初始化時執行一次
 
@@ -207,7 +218,6 @@ function App() {
   const getCanvasCoordinates = (e) => {
     if (!canvasRef.current) return null;
     const rect = canvasRef.current.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
     
     let clientX, clientY;
     if (e.touches && e.touches.length > 0) {
@@ -221,9 +231,17 @@ function App() {
       clientY = e.clientY;
     }
     
+    // 計算相對於畫布的座標
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    
+    // 限制在固定畫布範圍內
+    const clampedX = Math.max(0, Math.min(CANVAS_WIDTH, x));
+    const clampedY = Math.max(0, Math.min(CANVAS_HEIGHT, y));
+    
     return {
-      x: (clientX - rect.left),
-      y: (clientY - rect.top)
+      x: clampedX,
+      y: clampedY
     };
   };
 
@@ -236,15 +254,16 @@ function App() {
       return;
     }
     
-    // 確保 context 存在，如果不存在則重新初始化
+    // 確保 context 存在
     if (!ctxRef.current || !canvasRef.current) {
       console.log('Canvas context missing, reinitializing...');
       if (canvasRef.current) {
         const canvas = canvasRef.current;
-        const rect = canvas.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
-        canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-        canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+        canvas.width = Math.floor(CANVAS_WIDTH * dpr);
+        canvas.height = Math.floor(CANVAS_HEIGHT * dpr);
+        canvas.style.width = `${CANVAS_WIDTH}px`;
+        canvas.style.height = `${CANVAS_HEIGHT}px`;
         const ctx = canvas.getContext('2d');
         ctxRef.current = ctx;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -285,10 +304,11 @@ function App() {
     if (!ctxRef.current || !canvasRef.current) {
       if (canvasRef.current) {
         const canvas = canvasRef.current;
-        const rect = canvas.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
-        canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-        canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+        canvas.width = Math.floor(CANVAS_WIDTH * dpr);
+        canvas.height = Math.floor(CANVAS_HEIGHT * dpr);
+        canvas.style.width = `${CANVAS_WIDTH}px`;
+        canvas.style.height = `${CANVAS_HEIGHT}px`;
         const ctx = canvas.getContext('2d');
         ctxRef.current = ctx;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -347,12 +367,23 @@ function App() {
   const redrawCanvas = (strokes) => {
     if (!ctxRef.current || !canvasRef.current) return;
     const ctx = ctxRef.current;
-    const dpr = window.devicePixelRatio || 1;
-    // 使用 CSS 像素座標清除（因為我們用了 setTransform）
-    ctx.clearRect(0, 0, canvasRef.current.width / dpr, canvasRef.current.height / dpr);
+    // 使用固定畫布尺寸清除
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     
     strokes.forEach(stroke => {
-      drawStroke(ctx, stroke);
+      // 確保座標在有效範圍內
+      const clampedStroke = {
+        ...stroke,
+        from: {
+          x: Math.max(0, Math.min(CANVAS_WIDTH, stroke.from?.x || 0)),
+          y: Math.max(0, Math.min(CANVAS_HEIGHT, stroke.from?.y || 0))
+        },
+        to: {
+          x: Math.max(0, Math.min(CANVAS_WIDTH, stroke.to?.x || 0)),
+          y: Math.max(0, Math.min(CANVAS_HEIGHT, stroke.to?.y || 0))
+        }
+      };
+      drawStroke(ctx, clampedStroke);
     });
   };
 
@@ -362,18 +393,19 @@ function App() {
     // 確保 context 存在
     if (!ctxRef.current && canvasRef.current) {
       const canvas = canvasRef.current;
-      const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      canvas.width = Math.floor(CANVAS_WIDTH * dpr);
+      canvas.height = Math.floor(CANVAS_HEIGHT * dpr);
+      canvas.style.width = `${CANVAS_WIDTH}px`;
+      canvas.style.height = `${CANVAS_HEIGHT}px`;
       const ctx = canvas.getContext('2d');
       ctxRef.current = ctx;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     
-    if (ctxRef.current && canvasRef.current) {
-      const dpr = window.devicePixelRatio || 1;
-      ctxRef.current.clearRect(0, 0, canvasRef.current.width / dpr, canvasRef.current.height / dpr);
+    if (ctxRef.current) {
+      // 使用固定畫布尺寸清除
+      ctxRef.current.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     }
     
     if (socket) {
@@ -464,15 +496,46 @@ function App() {
           <div className="word-hint">題目：{currentWord}</div>
         )}
 
-        {/* 懸浮猜測泡泡（非聊天，短暫顯示） */}
-        <div className="guess-bubbles">
-          {bubbles.map((b) => (
-            <div key={b.id} className={`guess-bubble ${b.correct ? 'correct' : ''}`}>
-              <span className="bubble-name">{b.nickname}</span>
-              <span className="bubble-text">：{b.text}</span>
+        {/* 可滾動聊天室（懸浮在角落） */}
+        {showChat && messages.length > 0 && (
+          <div className="chat-container">
+            <div className="chat-header">
+              <button 
+                className="chat-toggle-btn"
+                onClick={() => setShowChat(false)}
+                aria-label="隱藏聊天"
+              >
+                ×
+              </button>
             </div>
-          ))}
-        </div>
+            <div 
+              ref={chatContainerRef}
+              className="chat-messages"
+            >
+              {messages.map((msg) => (
+                <div 
+                  key={msg.id} 
+                  className={`chat-message ${msg.correct ? 'correct' : ''}`}
+                >
+                  <span className="chat-message-name">{msg.nickname}</span>
+                  <span className="chat-message-text">：{msg.text}</span>
+                  {msg.correct && <span className="chat-correct-badge">✓</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* 顯示聊天室按鈕（當聊天室隱藏時） */}
+        {!showChat && messages.length > 0 && (
+          <button 
+            className="chat-show-btn"
+            onClick={() => setShowChat(true)}
+            aria-label="顯示聊天"
+          >
+            💬 {messages.length}
+          </button>
+        )}
       </div>
 
       {/* 底部操作區 */}
