@@ -179,6 +179,43 @@
   z-index: 10;
 }
 
+/* 懸浮猜測泡泡（疊在畫布上，短暫顯示） */
+.guess-bubbles {
+  position: absolute;
+  bottom: 96px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 11;
+  pointer-events: none;
+}
+
+.guess-bubble {
+  background: rgba(255, 255, 255, 0.95);
+  color: #111827;
+  border: 1px solid #E5E7EB;
+  border-radius: 16px;
+  padding: 6px 10px;
+  font-size: 13px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  animation: bubbleIn 0.2s ease-out;
+}
+
+.guess-bubble.correct {
+  background: #D1FAE5;
+  border-color: #A7F3D0;
+  color: #065F46;
+}
+
+.bubble-name { font-weight: 700; }
+.bubble-text { opacity: 0.9; }
+
+@keyframes bubbleIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* 底部操作區 */
 .bottom-bar {
   background: #FFFFFF;

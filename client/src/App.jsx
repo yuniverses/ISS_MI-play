@@ -14,6 +14,7 @@ function App() {
   const [timeRemaining, setTimeRemaining] = useState(30);
   const [guessInput, setGuessInput] = useState('');
   const [guessResult, setGuessResult] = useState(null);
+  const [bubbles, setBubbles] = useState([]); // 懸浮泡泡列表
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentColor, setCurrentColor] = useState(COLORS[0]);
   const [currentWidth, setCurrentWidth] = useState(3);
@@ -21,6 +22,7 @@ function App() {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const lastPointRef = useRef(null);
+  const roomStateRef = useRef(null); // 用於事件監聽器中訪問最新狀態
 
   useEffect(() => {
     const newSocket = io('http://localhost:3001');
@@ -38,6 +40,7 @@ function App() {
 
     newSocket.on('room-state', (state) => {
       setRoomState(state);
+      roomStateRef.current = state; // 同步更新 ref
       setTimeRemaining(state.timeRemaining || 30);
       
       // 如果有筆觸歷史，重繪畫布
@@ -47,8 +50,27 @@ function App() {
     });
 
     newSocket.on('stroke-received', (stroke) => {
-      if (ctxRef.current && !isPlayerPainter()) {
+      // 接收其他人的筆觸（畫畫者不會收到自己的筆觸，因為伺服器用 socket.to）
+      console.log('收到筆觸:', stroke);
+      
+      // 確保 context 存在
+      if (!ctxRef.current && canvasRef.current) {
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+        canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+        const ctx = canvas.getContext('2d');
+        ctxRef.current = ctx;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+      }
+      
+      if (ctxRef.current) {
         drawStroke(ctxRef.current, stroke);
+      } else {
+        console.error('無法繪製筆觸：context 不存在');
       }
     });
 
@@ -75,6 +97,15 @@ function App() {
       }
     });
 
+    // 懸浮泡泡事件（短暫顯示其他人的猜測）
+    newSocket.on('guess-bubble', (payload) => {
+      const id = `${payload.userId}-${Date.now()}`;
+      setBubbles((prev) => [...prev.slice(-4), { id, ...payload }]);
+      setTimeout(() => {
+        setBubbles((prev) => prev.filter((b) => b.id !== id));
+      }, 2000);
+    });
+
     newSocket.on('timer-update', ({ remaining }) => {
       setTimeRemaining(remaining);
     });
@@ -96,29 +127,75 @@ function App() {
   useEffect(() => {
     if (canvasRef.current) {
       const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-      ctxRef.current = ctx;
-
-      // 設置畫布尺寸
+      
+      // 設置畫布尺寸（只在初始化時執行，不會清除內容）
       const resizeCanvas = () => {
+        if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
-        canvas.width = rect.width * window.devicePixelRatio;
-        canvas.height = rect.height * window.devicePixelRatio;
-        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+        const dpr = window.devicePixelRatio || 1;
+        
+        // 只在尺寸真的改變時才重新設置（避免清除內容）
+        const newWidth = Math.max(1, Math.floor(rect.width * dpr));
+        const newHeight = Math.max(1, Math.floor(rect.height * dpr));
+        
+        if (canvas.width !== newWidth || canvas.height !== newHeight) {
+          // 保存當前畫布內容
+          const imageData = ctxRef.current ? ctxRef.current.getImageData(0, 0, canvas.width / dpr, canvas.height / dpr) : null;
+          
+          // 設置 canvas 尺寸（這會重置 context，所以要在設置後重新獲取）
+          canvas.width = newWidth;
+          canvas.height = newHeight;
+          
+          // 重新獲取 context（因為設置 width/height 會重置它）
+          const ctx = canvas.getContext('2d');
+          ctxRef.current = ctx;
+          
+          // 設置縮放和繪圖屬性
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          
+          // 恢復畫布內容（如果有的話）
+          if (imageData) {
+            ctx.putImageData(imageData, 0, 0);
+          }
+        }
+        
+        // 更新當前顏色和寬度（不重置 canvas）
+        if (ctxRef.current) {
+          ctxRef.current.strokeStyle = currentColor;
+          ctxRef.current.lineWidth = currentWidth;
+        }
       };
 
       resizeCanvas();
+      
+      // 延遲初始化，確保 DOM 已完全渲染
+      const timer = setTimeout(resizeCanvas, 100);
+      
       window.addEventListener('resize', resizeCanvas);
 
-      return () => window.removeEventListener('resize', resizeCanvas);
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('resize', resizeCanvas);
+      };
     }
-  }, []);
+  }, []); // 只在初始化時執行一次
+
+  // 單獨處理顏色和寬度變化（只更新 context 屬性，不重置 canvas）
+  useEffect(() => {
+    if (ctxRef.current) {
+      ctxRef.current.strokeStyle = currentColor;
+      ctxRef.current.lineWidth = currentWidth;
+    }
+  }, [currentColor, currentWidth]);
 
   const isPlayerPainter = () => {
-    if (!roomState || !socket) return false;
-    return roomState.currentPainter === socket.id;
+    const currentState = roomStateRef.current || roomState;
+    if (!currentState || !socket || !socket.id) {
+      return false;
+    }
+    return currentState.currentPainter === socket.id;
   };
 
   const joinRoom = () => {
@@ -127,48 +204,135 @@ function App() {
     }
   };
 
-  const startDrawing = (e) => {
-    if (!isPlayerPainter() || !ctxRef.current) return;
-    
+  const getCanvasCoordinates = (e) => {
+    if (!canvasRef.current) return null;
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    const dpr = window.devicePixelRatio || 1;
+    
+    let clientX, clientY;
+    if (e.touches && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else if (e.changedTouches && e.changedTouches.length > 0) {
+      clientX = e.changedTouches[0].clientX;
+      clientY = e.changedTouches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    
+    return {
+      x: (clientX - rect.left),
+      y: (clientY - rect.top)
+    };
+  };
 
+  const startDrawing = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!isPlayerPainter()) {
+      console.log('Cannot draw: not painter');
+      return;
+    }
+    
+    // 確保 context 存在，如果不存在則重新初始化
+    if (!ctxRef.current || !canvasRef.current) {
+      console.log('Canvas context missing, reinitializing...');
+      if (canvasRef.current) {
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+        canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+        const ctx = canvas.getContext('2d');
+        ctxRef.current = ctx;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+      } else {
+        console.log('Cannot draw: no canvas element');
+        return;
+      }
+    }
+    
+    const coords = getCanvasCoordinates(e);
+    if (!coords) return;
+    
+    // Start drawing
     setIsDrawing(true);
-    lastPointRef.current = { x, y };
+    lastPointRef.current = coords;
+    
+    // 畫一個初始點
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    
+    ctx.strokeStyle = currentColor;
+    ctx.lineWidth = currentWidth;
+    ctx.fillStyle = currentColor;
+    ctx.beginPath();
+    ctx.arc(coords.x, coords.y, currentWidth / 2, 0, Math.PI * 2);
+    ctx.fill();
   };
 
   const draw = (e) => {
-    if (!isDrawing || !isPlayerPainter() || !ctxRef.current) return;
-
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
-
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!isDrawing || !isPlayerPainter()) return;
+    
+    // 確保 context 存在
+    if (!ctxRef.current || !canvasRef.current) {
+      if (canvasRef.current) {
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+        canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+        const ctx = canvas.getContext('2d');
+        ctxRef.current = ctx;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+      } else {
+        return;
+      }
+    }
+    
+    const coords = getCanvasCoordinates(e);
+    if (!coords || !lastPointRef.current) return;
+    
     const ctx = ctxRef.current;
+    if (!ctx) return;
+    
     ctx.strokeStyle = currentColor;
     ctx.lineWidth = currentWidth;
-
+    
     ctx.beginPath();
     ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
-    ctx.lineTo(x, y);
+    ctx.lineTo(coords.x, coords.y);
     ctx.stroke();
 
     // 發送筆觸到伺服器
     if (socket) {
       socket.emit('draw-stroke', {
         from: lastPointRef.current,
-        to: { x, y },
+        to: coords,
         color: currentColor,
         width: currentWidth
       });
     }
 
-    lastPointRef.current = { x, y };
+    lastPointRef.current = coords;
   };
 
-  const stopDrawing = () => {
+  const stopDrawing = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setIsDrawing(false);
+    lastPointRef.current = null;
   };
 
   const drawStroke = (ctx, stroke) => {
@@ -181,9 +345,11 @@ function App() {
   };
 
   const redrawCanvas = (strokes) => {
-    if (!ctxRef.current) return;
+    if (!ctxRef.current || !canvasRef.current) return;
     const ctx = ctxRef.current;
-    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    const dpr = window.devicePixelRatio || 1;
+    // 使用 CSS 像素座標清除（因為我們用了 setTransform）
+    ctx.clearRect(0, 0, canvasRef.current.width / dpr, canvasRef.current.height / dpr);
     
     strokes.forEach(stroke => {
       drawStroke(ctx, stroke);
@@ -191,8 +357,25 @@ function App() {
   };
 
   const clearCanvas = () => {
-    if (!isPlayerPainter() || !ctxRef.current) return;
-    ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    if (!isPlayerPainter()) return;
+    
+    // 確保 context 存在
+    if (!ctxRef.current && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      const ctx = canvas.getContext('2d');
+      ctxRef.current = ctx;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    
+    if (ctxRef.current && canvasRef.current) {
+      const dpr = window.devicePixelRatio || 1;
+      ctxRef.current.clearRect(0, 0, canvasRef.current.width / dpr, canvasRef.current.height / dpr);
+    }
+    
     if (socket) {
       socket.emit('clear-canvas');
     }
@@ -274,10 +457,22 @@ function App() {
           onTouchStart={startDrawing}
           onTouchMove={draw}
           onTouchEnd={stopDrawing}
+          onTouchCancel={stopDrawing}
+          style={{ touchAction: 'none' }}
         />
         {isPainter && currentWord && (
           <div className="word-hint">題目：{currentWord}</div>
         )}
+
+        {/* 懸浮猜測泡泡（非聊天，短暫顯示） */}
+        <div className="guess-bubbles">
+          {bubbles.map((b) => (
+            <div key={b.id} className={`guess-bubble ${b.correct ? 'correct' : ''}`}>
+              <span className="bubble-name">{b.nickname}</span>
+              <span className="bubble-text">：{b.text}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* 底部操作區 */}

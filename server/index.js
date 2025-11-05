@@ -78,6 +78,10 @@ io.on('connection', (socket) => {
       // 開始30秒倒計時
       startTimer(room);
     }
+    // 如果有畫畫者但沒有計時器（可能之前中斷），重新啟動計時
+    if (room.currentPainter && !room.timer) {
+      startTimer(room);
+    }
 
     // 發送房間狀態
     io.to(room.id).emit('room-state', {
@@ -107,6 +111,7 @@ io.on('connection', (socket) => {
   socket.on('draw-stroke', (stroke) => {
     const room = getOrCreateRoom();
     if (room.currentPainter !== socket.id) {
+      console.log(`玩家 ${socket.id} 試圖畫圖，但不是畫畫者`);
       return; // 不是畫畫者，忽略
     }
 
@@ -116,6 +121,8 @@ io.on('connection', (socket) => {
     });
 
     // 廣播給其他玩家（不包括自己）
+    const otherPlayersCount = room.players.filter(p => p.id !== socket.id).length;
+    console.log(`畫畫者 ${socket.id} 發送筆觸，廣播給 ${otherPlayersCount} 位其他玩家`);
     socket.to(room.id).emit('stroke-received', stroke);
   });
 
@@ -143,6 +150,15 @@ io.on('connection', (socket) => {
 
     const normalizedGuess = guess.trim().toLowerCase();
     const normalizedWord = room.currentWord.toLowerCase();
+
+    // 向所有人顯示一個短暫的懸浮泡泡（非聊天記錄）
+    const guesserPlayer = room.players.find(p => p.id === socket.id);
+    io.to(room.id).emit('guess-bubble', {
+      userId: socket.id,
+      nickname: guesserPlayer?.nickname || '玩家',
+      text: guess,
+      correct: normalizedGuess === normalizedWord
+    });
 
     if (normalizedGuess === normalizedWord) {
       // 答對了！
@@ -221,7 +237,7 @@ io.on('connection', (socket) => {
 
     // 找到當前畫畫者的索引
     const currentIndex = room.players.findIndex(p => p.id === room.currentPainter);
-    const nextIndex = (currentIndex + 1) % room.players.length;
+    const nextIndex = ((currentIndex >= 0 ? currentIndex : -1) + 1) % room.players.length;
     room.currentPainter = room.players[nextIndex].id;
     room.currentWord = words[Math.floor(Math.random() * words.length)];
     room.round++;
@@ -270,7 +286,16 @@ io.on('connection', (socket) => {
         clearInterval(room.timer);
         room.timer = null;
       }
-      nextRound(room);
+      if (room.players.length > 0) {
+        nextRound(room);
+      } else {
+        // 房間清空
+        room.currentPainter = null;
+        room.currentWord = null;
+        room.round = 0;
+        room.startedAt = null;
+        room.strokes = [];
+      }
     } else if (room.players.length > 0) {
       // 更新房間狀態
       io.to(room.id).emit('room-state', {
