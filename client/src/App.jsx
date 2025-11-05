@@ -107,13 +107,12 @@ function App() {
     });
 
     newSocket.on('guess-result', (result) => {
-      setGuessResult(result);
+      // 只顯示答對的訊息，答錯的不顯示
       if (result.correct) {
-        setGuessInput('');
+        setGuessResult(result);
         setTimeout(() => setGuessResult(null), 3000);
-      } else {
-        setTimeout(() => setGuessResult(null), 2000);
       }
+      // 不管答對答錯，都清空輸入框（在 submitGuess 中已經處理）
     });
 
     // 聊天訊息事件（保存所有猜測訊息）
@@ -416,6 +415,8 @@ function App() {
   const submitGuess = () => {
     if (guessInput.trim() && socket && !isPlayerPainter()) {
       socket.emit('submit-guess', { guess: guessInput.trim() });
+      // 送出後立即清空輸入框
+      setGuessInput('');
     }
   };
 
