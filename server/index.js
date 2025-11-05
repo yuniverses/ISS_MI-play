@@ -1,0 +1,297 @@
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+
+const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST"]
+  }
+});
+
+app.use(cors());
+app.use(express.json());
+
+// 房間管理
+const rooms = new Map();
+
+// 題庫
+const words = [
+  '西瓜', '貓', '狗', '飛機', '蘋果', '香蕉', '車子', '太陽', '月亮',
+  '星星', '花', '樹', '房子', '雨傘', '書', '筆', '電腦', '手機',
+  '蛋糕', '冰淇淋', '球', '魚', '鳥', '兔子', '熊', '老虎', '獅子'
+];
+
+// 創建或加入房間
+function getOrCreateRoom() {
+  // 簡化：只使用一個默認房間
+  const roomId = 'default-room';
+  if (!rooms.has(roomId)) {
+    rooms.set(roomId, {
+      id: roomId,
+      players: [],
+      currentPainter: null,
+      currentWord: null,
+      round: 0,
+      startedAt: null,
+      timer: null,
+      scores: new Map(),
+      strokes: []
+    });
+  }
+  return rooms.get(roomId);
+}
+
+// 獲取玩家角色
+function getPlayerRole(room, playerId) {
+  return room.currentPainter === playerId ? 'painter' : 'guesser';
+}
+
+io.on('connection', (socket) => {
+  console.log('玩家連接:', socket.id);
+
+  socket.on('join-room', ({ nickname }) => {
+    const room = getOrCreateRoom();
+    const player = {
+      id: socket.id,
+      nickname: nickname || `玩家${socket.id.slice(0, 6)}`,
+      score: room.scores.get(socket.id) || 0,
+      joinedAt: Date.now()
+    };
+
+    room.players.push(player);
+    room.scores.set(socket.id, player.score);
+    
+    socket.join(room.id);
+
+    // 如果房間還沒開始且只有一個玩家，讓他當畫畫者
+    if (room.players.length === 1 && !room.currentPainter) {
+      room.currentPainter = socket.id;
+      room.currentWord = words[Math.floor(Math.random() * words.length)];
+      room.round = 1;
+      room.startedAt = Date.now();
+      room.strokes = [];
+      
+      // 開始30秒倒計時
+      startTimer(room);
+    }
+
+    // 發送房間狀態
+    io.to(room.id).emit('room-state', {
+      players: room.players.map(p => ({
+        id: p.id,
+        nickname: p.nickname,
+        score: room.scores.get(p.id) || 0,
+        role: getPlayerRole(room, p.id)
+      })),
+      currentPainter: room.currentPainter,
+      round: room.round,
+      timeRemaining: room.timer ? Math.max(0, 30 - Math.floor((Date.now() - room.startedAt) / 1000)) : 30,
+      strokes: room.strokes
+    });
+
+    // 如果是畫畫者，發送題目
+    if (room.currentPainter === socket.id) {
+      socket.emit('your-turn-to-draw', {
+        word: room.currentWord
+      });
+    }
+
+    console.log(`${player.nickname} 加入房間，當前 ${room.players.length} 人`);
+  });
+
+  // 畫圖筆觸
+  socket.on('draw-stroke', (stroke) => {
+    const room = getOrCreateRoom();
+    if (room.currentPainter !== socket.id) {
+      return; // 不是畫畫者，忽略
+    }
+
+    room.strokes.push({
+      ...stroke,
+      timestamp: Date.now()
+    });
+
+    // 廣播給其他玩家（不包括自己）
+    socket.to(room.id).emit('stroke-received', stroke);
+  });
+
+  // 清除畫布
+  socket.on('clear-canvas', () => {
+    const room = getOrCreateRoom();
+    if (room.currentPainter !== socket.id) {
+      return;
+    }
+    room.strokes = [];
+    io.to(room.id).emit('canvas-cleared');
+  });
+
+  // 提交猜測
+  socket.on('submit-guess', ({ guess }) => {
+    const room = getOrCreateRoom();
+    if (room.currentPainter === socket.id) {
+      socket.emit('guess-result', { correct: false, message: '你是畫畫者，不能猜題' });
+      return;
+    }
+
+    if (!room.currentWord) {
+      return;
+    }
+
+    const normalizedGuess = guess.trim().toLowerCase();
+    const normalizedWord = room.currentWord.toLowerCase();
+
+    if (normalizedGuess === normalizedWord) {
+      // 答對了！
+      const timeRemaining = room.timer ? Math.max(0, 30 - Math.floor((Date.now() - room.startedAt) / 1000)) : 0;
+      const points = 50 + (timeRemaining * 2);
+      
+      // 給猜題者加分
+      const guesserScore = room.scores.get(socket.id) || 0;
+      room.scores.set(socket.id, guesserScore + points);
+      
+      // 給畫畫者加分
+      const painterScore = room.scores.get(room.currentPainter) || 0;
+      room.scores.set(room.currentPainter, painterScore + 30);
+
+      // 更新玩家分數
+      const guesser = room.players.find(p => p.id === socket.id);
+      const painter = room.players.find(p => p.id === room.currentPainter);
+      if (guesser) guesser.score = room.scores.get(socket.id);
+      if (painter) painter.score = room.scores.get(room.currentPainter);
+
+      // 通知所有人
+      io.to(room.id).emit('guess-result', {
+        correct: true,
+        guesserId: socket.id,
+        guesserNickname: guesser?.nickname || '玩家',
+        word: room.currentWord,
+        points: points
+      });
+
+      // 更新排行榜
+      io.to(room.id).emit('room-state', {
+        players: room.players.map(p => ({
+          id: p.id,
+          nickname: p.nickname,
+          score: room.scores.get(p.id) || 0,
+          role: getPlayerRole(room, p.id)
+        })),
+        currentPainter: room.currentPainter,
+        round: room.round,
+        timeRemaining: timeRemaining,
+        strokes: room.strokes
+      });
+
+      console.log(`${guesser?.nickname} 猜對了！答案是 ${room.currentWord}`);
+    } else {
+      socket.emit('guess-result', { correct: false, message: '答案不對，再試試看！' });
+    }
+  });
+
+  // 開始計時器
+  function startTimer(room) {
+    if (room.timer) {
+      clearInterval(room.timer);
+    }
+
+    room.startedAt = Date.now();
+    room.timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - room.startedAt) / 1000);
+      const remaining = 30 - elapsed;
+
+      if (remaining <= 0) {
+        clearInterval(room.timer);
+        room.timer = null;
+        
+        // 回合結束，切換到下一個畫畫者
+        nextRound(room);
+      } else {
+        io.to(room.id).emit('timer-update', { remaining });
+      }
+    }, 1000);
+  }
+
+  // 下一回合
+  function nextRound(room) {
+    if (room.players.length === 0) return;
+
+    // 找到當前畫畫者的索引
+    const currentIndex = room.players.findIndex(p => p.id === room.currentPainter);
+    const nextIndex = (currentIndex + 1) % room.players.length;
+    room.currentPainter = room.players[nextIndex].id;
+    room.currentWord = words[Math.floor(Math.random() * words.length)];
+    room.round++;
+    room.startedAt = Date.now();
+    room.strokes = [];
+
+    // 通知所有人新回合開始
+    io.to(room.id).emit('round-start', {
+      round: room.round,
+      painterId: room.currentPainter,
+      painterNickname: room.players[nextIndex].nickname
+    });
+
+    // 告訴新畫畫者題目
+    io.to(room.currentPainter).emit('your-turn-to-draw', {
+      word: room.currentWord
+    });
+
+    // 更新房間狀態
+    io.to(room.id).emit('room-state', {
+      players: room.players.map(p => ({
+        id: p.id,
+        nickname: p.nickname,
+        score: room.scores.get(p.id) || 0,
+        role: getPlayerRole(room, p.id)
+      })),
+      currentPainter: room.currentPainter,
+      round: room.round,
+      timeRemaining: 30,
+      strokes: []
+    });
+
+    // 重新開始計時
+    startTimer(room);
+  }
+
+  // 斷線處理
+  socket.on('disconnect', () => {
+    const room = getOrCreateRoom();
+    room.players = room.players.filter(p => p.id !== socket.id);
+    room.scores.delete(socket.id);
+
+    // 如果畫畫者斷線，跳到下一回合
+    if (room.currentPainter === socket.id) {
+      if (room.timer) {
+        clearInterval(room.timer);
+        room.timer = null;
+      }
+      nextRound(room);
+    } else if (room.players.length > 0) {
+      // 更新房間狀態
+      io.to(room.id).emit('room-state', {
+        players: room.players.map(p => ({
+          id: p.id,
+          nickname: p.nickname,
+          score: room.scores.get(p.id) || 0,
+          role: getPlayerRole(room, p.id)
+        })),
+        currentPainter: room.currentPainter,
+        round: room.round,
+        timeRemaining: room.timer ? Math.max(0, 30 - Math.floor((Date.now() - room.startedAt) / 1000)) : 30,
+        strokes: room.strokes
+      });
+    }
+
+    console.log('玩家斷線:', socket.id);
+  });
+});
+
+const PORT = process.env.PORT || 3001;
+httpServer.listen(PORT, () => {
+  console.log(`🎮 遊戲伺服器運行在 http://localhost:${PORT}`);
+});
