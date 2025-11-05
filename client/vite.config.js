@@ -10,6 +10,12 @@ export default defineConfig({
         target: 'http://localhost:3001',
         ws: true
       }
+    },
+    // 確保能正確處理中文文件名
+    fs: {
+      strict: false
     }
-  }
+  },
+  // 確保 public 目錄的文件能正確訪問
+  publicDir: 'public'
 });

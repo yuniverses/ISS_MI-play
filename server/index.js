@@ -15,6 +15,54 @@ const io = new Server(httpServer, {
 app.use(cors());
 app.use(express.json());
 
+// 飲料戰隊配置
+// 直接使用中文文件名，瀏覽器會自動處理編碼
+const TEAMS = {
+  'pearl-tea-latte': {
+    id: 'pearl-tea-latte',
+    name: '珍珠紅茶拿鐵隊',
+    image: '/teams/珍珠紅茶拿鐵.png',
+    color: '#D4A574'
+  },
+  'roasted-barley': {
+    id: 'roasted-barley',
+    name: '焙香決明大麥隊',
+    image: '/teams/焙香決明大麥.png',
+    color: '#8B7355'
+  },
+  'plum-green': {
+    id: 'plum-green',
+    name: '熟釀青梅綠隊',
+    image: '/teams/熟釀青梅綠.png',
+    color: '#A8D5BA'
+  },
+  'light-buckwheat': {
+    id: 'light-buckwheat',
+    name: '輕纖蕎麥茶隊',
+    image: '/teams/輕纖蕎麥茶.png',
+    color: '#E6D3A3'
+  },
+  'lime-tea': {
+    id: 'lime-tea',
+    name: '青檸香茶隊',
+    image: '/teams/青檸香茶.png',
+    color: '#B8E6B8'
+  },
+  'pomelo-green': {
+    id: 'pomelo-green',
+    name: '香柚綠茶隊',
+    image: '/teams/香柚綠茶.png',
+    color: '#F0E68C'
+  }
+};
+
+// 根據URL參數或鏈結獲取戰隊ID
+function getTeamFromQuery(query) {
+  // 從URL參數中獲取戰隊ID，例如 ?team=pearl-tea-latte
+  const teamId = query?.team || query?.drink || 'pearl-tea-latte';
+  return TEAMS[teamId] || TEAMS['pearl-tea-latte']; // 默認戰隊
+}
+
 // 房間管理
 const rooms = new Map();
 
@@ -53,11 +101,19 @@ function getPlayerRole(room, playerId) {
 io.on('connection', (socket) => {
   console.log('玩家連接:', socket.id);
 
-  socket.on('join-room', ({ nickname }) => {
+  socket.on('join-room', ({ nickname, teamId }) => {
     const room = getOrCreateRoom();
+    
+    // 獲取戰隊資訊
+    const team = TEAMS[teamId] || TEAMS['pearl-tea-latte'];
+    
     const player = {
       id: socket.id,
       nickname: nickname || `玩家${socket.id.slice(0, 6)}`,
+      teamId: team.id,
+      teamName: team.name,
+      teamImage: team.image,
+      teamColor: team.color,
       score: room.scores.get(socket.id) || 0,
       joinedAt: Date.now()
     };
@@ -88,6 +144,10 @@ io.on('connection', (socket) => {
       players: room.players.map(p => ({
         id: p.id,
         nickname: p.nickname,
+        teamId: p.teamId,
+        teamName: p.teamName,
+        teamImage: p.teamImage,
+        teamColor: p.teamColor,
         score: room.scores.get(p.id) || 0,
         role: getPlayerRole(room, p.id)
       })),
@@ -193,6 +253,10 @@ io.on('connection', (socket) => {
         players: room.players.map(p => ({
           id: p.id,
           nickname: p.nickname,
+          teamId: p.teamId,
+          teamName: p.teamName,
+          teamImage: p.teamImage,
+          teamColor: p.teamColor,
           score: room.scores.get(p.id) || 0,
           role: getPlayerRole(room, p.id)
         })),
@@ -261,6 +325,10 @@ io.on('connection', (socket) => {
       players: room.players.map(p => ({
         id: p.id,
         nickname: p.nickname,
+        teamId: p.teamId,
+        teamName: p.teamName,
+        teamImage: p.teamImage,
+        teamColor: p.teamColor,
         score: room.scores.get(p.id) || 0,
         role: getPlayerRole(room, p.id)
       })),
@@ -302,6 +370,10 @@ io.on('connection', (socket) => {
         players: room.players.map(p => ({
           id: p.id,
           nickname: p.nickname,
+          teamId: p.teamId,
+          teamName: p.teamName,
+          teamImage: p.teamImage,
+          teamColor: p.teamColor,
           score: room.scores.get(p.id) || 0,
           role: getPlayerRole(room, p.id)
         })),
