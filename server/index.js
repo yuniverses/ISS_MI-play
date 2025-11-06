@@ -401,9 +401,11 @@ io.on('connection', (socket) => {
   function nextRound(room) {
     if (room.players.length === 0) return;
 
+    console.log(`===== nextRound 被調用，當前 round = ${room.round}, MAX_ROUNDS = ${MAX_ROUNDS} =====`);
+
     // 檢查是否達到最大輪數
     if (room.round >= MAX_ROUNDS) {
-      console.log(`遊戲結束！已完成 ${MAX_ROUNDS} 輪`);
+      console.log(`🎊 遊戲結束！已完成 ${MAX_ROUNDS} 輪，觸發 endGame()`);
       endGame(room);
       return;
     }
@@ -414,6 +416,7 @@ io.on('connection', (socket) => {
     room.currentPainter = room.players[nextIndex].id;
     room.currentWord = words[Math.floor(Math.random() * words.length)];
     room.round++;
+    console.log(`✅ 開始第 ${room.round} 輪，畫畫者：${room.players[nextIndex].nickname}`);
     room.startedAt = Date.now();
     room.strokes = [];
     room.correctGuessers = []; // 清空答對名單
@@ -455,6 +458,8 @@ io.on('connection', (socket) => {
 
   // 遊戲結束
   function endGame(room) {
+    console.log(`🎊🎊🎊 endGame() 被調用！當前 round = ${room.round}`);
+
     // 停止計時器
     if (room.timer) {
       clearInterval(room.timer);
@@ -543,11 +548,16 @@ io.on('connection', (socket) => {
       currentTeamScores
     });
 
-    console.log('遊戲結束，排行榜已更新');
+    console.log('✅ 遊戲結束事件已發送，排行榜已更新');
+    console.log(`   - 本局玩家數: ${finalPlayers.length}`);
+    console.log(`   - 全局排行榜: ${globalTop10.length} 人`);
+    console.log(`   - 戰隊排名: ${teamRankings.length} 隊`);
   }
 
   // 重置遊戲
   function restartGame(room) {
+    console.log('🔄 重新開始遊戲，清空所有分數和狀態');
+
     // 保留玩家，但重置分數和狀態
     room.round = 0;
     room.currentPainter = null;
@@ -556,13 +566,12 @@ io.on('connection', (socket) => {
     room.strokes = [];
     room.correctGuessers = [];
 
-    // 不清空分數，繼續累積
-    // 如果要清空分數，取消下面的註釋
-    // room.scores.clear();
-    // room.players.forEach(p => {
-    //   room.scores.set(p.id, 0);
-    //   p.score = 0;
-    // });
+    // 清空所有玩家的分數
+    room.scores.clear();
+    room.players.forEach(p => {
+      room.scores.set(p.id, 0);
+      p.score = 0;
+    });
 
     if (room.players.length > 0) {
       // 開始新一局
