@@ -258,53 +258,6 @@ function App() {
     }
   }, []); // 只在初始化時執行一次
 
-  // 添加觸摸事件監聽器（非被動模式，避免 preventDefault 警告）
-  useEffect(() => {
-    if (!canvasRef.current || !socket) return;
-    
-    const canvas = canvasRef.current;
-    
-    const handleTouchStart = (e) => {
-      const currentState = roomStateRef.current || roomState;
-      const isPainter = currentState?.currentPainter === socket.id;
-      if (isPainter) {
-        e.preventDefault();
-        startDrawing(e);
-      }
-    };
-    
-    const handleTouchMove = (e) => {
-      const currentState = roomStateRef.current || roomState;
-      const isPainter = currentState?.currentPainter === socket.id;
-      if (isPainter) {
-        e.preventDefault();
-        draw(e);
-      }
-    };
-    
-    const handleTouchEnd = (e) => {
-      const currentState = roomStateRef.current || roomState;
-      const isPainter = currentState?.currentPainter === socket.id;
-      if (isPainter) {
-        e.preventDefault();
-        stopDrawing(e);
-      }
-    };
-    
-    // 使用非被動監聽器
-    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
-    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
-    
-    return () => {
-      canvas.removeEventListener('touchstart', handleTouchStart);
-      canvas.removeEventListener('touchmove', handleTouchMove);
-      canvas.removeEventListener('touchend', handleTouchEnd);
-      canvas.removeEventListener('touchcancel', handleTouchEnd);
-    };
-  }, [socket, startDrawing, draw, stopDrawing]); // 繪畫函數依賴
-
   // 單獨處理顏色和寬度變化（只更新 context 屬性，不重置 canvas）
   useEffect(() => {
     if (ctxRef.current) {
@@ -482,6 +435,53 @@ function App() {
     setIsDrawing(false);
     lastPointRef.current = null;
   }, []);
+
+  // 添加觸摸事件監聽器（非被動模式，避免 preventDefault 警告）
+  useEffect(() => {
+    if (!canvasRef.current || !socket) return;
+
+    const canvas = canvasRef.current;
+
+    const handleTouchStart = (e) => {
+      const currentState = roomStateRef.current || roomState;
+      const isPainter = currentState?.currentPainter === socket.id;
+      if (isPainter) {
+        e.preventDefault();
+        startDrawing(e);
+      }
+    };
+
+    const handleTouchMove = (e) => {
+      const currentState = roomStateRef.current || roomState;
+      const isPainter = currentState?.currentPainter === socket.id;
+      if (isPainter) {
+        e.preventDefault();
+        draw(e);
+      }
+    };
+
+    const handleTouchEnd = (e) => {
+      const currentState = roomStateRef.current || roomState;
+      const isPainter = currentState?.currentPainter === socket.id;
+      if (isPainter) {
+        e.preventDefault();
+        stopDrawing(e);
+      }
+    };
+
+    // 使用非被動監聽器
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+      canvas.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [socket, startDrawing, draw, stopDrawing, roomState]); // 繪畫函數依賴
 
   const drawStroke = (ctx, stroke) => {
     ctx.strokeStyle = stroke.color;
