@@ -303,7 +303,7 @@ function App() {
       canvas.removeEventListener('touchend', handleTouchEnd);
       canvas.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [socket, startDrawing, draw, stopDrawing, roomState]); // 添加繪畫函數依賴
+  }, [socket, startDrawing, draw, stopDrawing]); // 繪畫函數依賴
 
   // 單獨處理顏色和寬度變化（只更新 context 屬性，不重置 canvas）
   useEffect(() => {
@@ -313,31 +313,31 @@ function App() {
     }
   }, [currentColor, currentWidth]);
 
-  const isPlayerPainter = () => {
+  const isPlayerPainter = useCallback(() => {
     const currentState = roomStateRef.current || roomState;
     if (!currentState || !socket || !socket.id) {
       return false;
     }
     return currentState.currentPainter === socket.id;
-  };
+  }, [roomState, socket]);
 
   const joinRoom = () => {
     if (nickname.trim() && socket) {
       // 從URL參數獲取戰隊ID
       const urlParams = new URLSearchParams(window.location.search);
       const teamId = urlParams.get('team') || urlParams.get('drink') || 'pearl-tea-latte';
-      
-      socket.emit('join-room', { 
+
+      socket.emit('join-room', {
         nickname: nickname.trim(),
         teamId: teamId
       });
     }
   };
 
-  const getCanvasCoordinates = (e) => {
+  const getCanvasCoordinates = useCallback((e) => {
     if (!canvasRef.current) return null;
     const rect = canvasRef.current.getBoundingClientRect();
-    
+
     let clientX, clientY;
     if (e.touches && e.touches.length > 0) {
       clientX = e.touches[0].clientX;
@@ -349,20 +349,20 @@ function App() {
       clientX = e.clientX;
       clientY = e.clientY;
     }
-    
+
     // 計算相對於畫布的座標
     const x = clientX - rect.left;
     const y = clientY - rect.top;
-    
+
     // 限制在固定畫布範圍內
     const clampedX = Math.max(0, Math.min(CANVAS_WIDTH, x));
     const clampedY = Math.max(0, Math.min(CANVAS_HEIGHT, y));
-    
+
     return {
       x: clampedX,
       y: clampedY
     };
-  };
+  }, []);
 
   const startDrawing = useCallback((e) => {
     // 只在非觸摸事件時 preventDefault（觸摸事件在 addEventListener 中處理）
@@ -414,7 +414,7 @@ function App() {
     ctx.beginPath();
     ctx.arc(coords.x, coords.y, currentWidth / 2, 0, Math.PI * 2);
     ctx.fill();
-  }, [currentColor, currentWidth, roomState, socket]);
+  }, [currentColor, currentWidth, isPlayerPainter, getCanvasCoordinates]);
 
   const draw = useCallback((e) => {
     // 只在非觸摸事件時 preventDefault
@@ -469,7 +469,7 @@ function App() {
     }
 
     lastPointRef.current = coords;
-  }, [isDrawing, currentColor, currentWidth, socket, roomState]);
+  }, [isDrawing, currentColor, currentWidth, socket, isPlayerPainter, getCanvasCoordinates]);
 
   const stopDrawing = useCallback((e) => {
     if (e) {
