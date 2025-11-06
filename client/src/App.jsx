@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import './App.css';
 
@@ -303,7 +303,7 @@ function App() {
       canvas.removeEventListener('touchend', handleTouchEnd);
       canvas.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [socket]); // 只依賴 socket
+  }, [socket, startDrawing, draw, stopDrawing, roomState]); // 添加繪畫函數依賴
 
   // 單獨處理顏色和寬度變化（只更新 context 屬性，不重置 canvas）
   useEffect(() => {
@@ -364,18 +364,18 @@ function App() {
     };
   };
 
-  const startDrawing = (e) => {
+  const startDrawing = useCallback((e) => {
     // 只在非觸摸事件時 preventDefault（觸摸事件在 addEventListener 中處理）
     if (!e.touches && !e.changedTouches) {
       e.preventDefault();
     }
     e.stopPropagation();
-    
+
     if (!isPlayerPainter()) {
       console.log('Cannot draw: not painter');
       return;
     }
-    
+
     // 確保 context 存在
     if (!ctxRef.current || !canvasRef.current) {
       console.log('Canvas context missing, reinitializing...');
@@ -396,35 +396,35 @@ function App() {
         return;
       }
     }
-    
+
     const coords = getCanvasCoordinates(e);
     if (!coords) return;
-    
+
     // Start drawing
     setIsDrawing(true);
     lastPointRef.current = coords;
-    
+
     // 畫一個初始點
     const ctx = ctxRef.current;
     if (!ctx) return;
-    
+
     ctx.strokeStyle = currentColor;
     ctx.lineWidth = currentWidth;
     ctx.fillStyle = currentColor;
     ctx.beginPath();
     ctx.arc(coords.x, coords.y, currentWidth / 2, 0, Math.PI * 2);
     ctx.fill();
-  };
+  }, [currentColor, currentWidth, roomState, socket]);
 
-  const draw = (e) => {
+  const draw = useCallback((e) => {
     // 只在非觸摸事件時 preventDefault
     if (!e.touches && !e.changedTouches) {
       e.preventDefault();
     }
     e.stopPropagation();
-    
+
     if (!isDrawing || !isPlayerPainter()) return;
-    
+
     // 確保 context 存在
     if (!ctxRef.current || !canvasRef.current) {
       if (canvasRef.current) {
@@ -443,16 +443,16 @@ function App() {
         return;
       }
     }
-    
+
     const coords = getCanvasCoordinates(e);
     if (!coords || !lastPointRef.current) return;
-    
+
     const ctx = ctxRef.current;
     if (!ctx) return;
-    
+
     ctx.strokeStyle = currentColor;
     ctx.lineWidth = currentWidth;
-    
+
     ctx.beginPath();
     ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
     ctx.lineTo(coords.x, coords.y);
@@ -469,9 +469,9 @@ function App() {
     }
 
     lastPointRef.current = coords;
-  };
+  }, [isDrawing, currentColor, currentWidth, socket, roomState]);
 
-  const stopDrawing = (e) => {
+  const stopDrawing = useCallback((e) => {
     if (e) {
       // 只在非觸摸事件時 preventDefault
       if (!e.touches && !e.changedTouches) {
@@ -481,7 +481,7 @@ function App() {
     }
     setIsDrawing(false);
     lastPointRef.current = null;
-  };
+  }, []);
 
   const drawStroke = (ctx, stroke) => {
     ctx.strokeStyle = stroke.color;
