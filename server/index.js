@@ -2,18 +2,48 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const httpServer = createServer(app);
+
+// CORS 設定：支援本地開發和生產環境
+const corsOptions = process.env.NODE_ENV === 'production'
+  ? {
+      origin: process.env.CLIENT_URL || '*',
+      methods: ["GET", "POST"],
+      credentials: true
+    }
+  : {
+      origin: true, // 開發環境允許所有來源
+      methods: ["GET", "POST"],
+      credentials: true
+    };
+
 const io = new Server(httpServer, {
-  cors: {
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST"]
-  }
+  cors: corsOptions
 });
 
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
+
+// 提供靜態資源（圖片等）
+app.use('/teams', express.static(path.join(__dirname, '../teams')));
+app.use('/stock', express.static(path.join(__dirname, '../stock')));
+
+// 提供前端構建的靜態文件（生產環境）
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../client/dist')));
+
+  // 所有其他路由都返回 index.html（支援 React Router）
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+  });
+}
 
 // 飲料戰隊配置
 // 直接使用中文文件名，瀏覽器會自動處理編碼

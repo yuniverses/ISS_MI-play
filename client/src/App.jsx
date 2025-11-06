@@ -35,8 +35,10 @@ function App() {
     // 從URL參數獲取戰隊ID
     const urlParams = new URLSearchParams(window.location.search);
     const teamId = urlParams.get('team') || urlParams.get('drink') || 'pearl-tea-latte';
-    
-    const newSocket = io('http://localhost:3001');
+
+    // 在生產環境使用相同的域名，本地開發使用 localhost:3001
+    const socketUrl = import.meta.env.PROD ? window.location.origin : 'http://localhost:3001';
+    const newSocket = io(socketUrl);
     setSocket(newSocket);
 
     newSocket.on('connect', () => {

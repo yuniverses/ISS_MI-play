@@ -1,0 +1,17 @@
+{
+  "name": "迷玩｜同杯遊戲室",
+  "description": "畫圖猜題遊戲 - Drawing and Guessing Game",
+  "repository": "https://github.com/your-username/ISS_MI-play",
+  "keywords": ["node", "express", "react", "socket.io", "game"],
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ],
+  "env": {
+    "NODE_ENV": {
+      "description": "環境設定",
+      "value": "production"
+    }
+  }
+}
