@@ -19,6 +19,11 @@
     "node": ">=18.x",
     "npm": ">=9.x"
   },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "cors": "^2.8.5"
+  },
   "devDependencies": {
     "concurrently": "^8.2.2"
   }
