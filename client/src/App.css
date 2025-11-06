@@ -133,6 +133,26 @@
   margin-bottom: 8px;
   font-size: 14px;
   font-weight: 600;
+  gap: 8px;
+}
+
+.word-hint-container {
+  flex: 1;
+  min-width: 0;
+}
+
+.word-hint-text {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  display: inline-block;
+}
+
+.round-timer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .timer {
@@ -641,6 +661,225 @@
   font-weight: 600;
 }
 
+/* 答案公佈全版畫面 */
+.answer-reveal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: overlayFadeIn 0.3s ease-out;
+}
+
+.answer-reveal-container {
+  background: linear-gradient(135deg, #FFFFFF 0%, #F0FDF4 100%);
+  border-radius: 24px;
+  padding: 32px;
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: containerSlideIn 0.4s ease-out;
+}
+
+.answer-reveal-header {
+  text-align: center;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #E5E7EB;
+}
+
+.answer-reveal-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #17B26A;
+  margin-bottom: 16px;
+}
+
+.answer-reveal-word {
+  font-size: 48px;
+  font-weight: 900;
+  color: #111827;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.answer-reveal-painter {
+  text-align: center;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: rgba(23, 178, 106, 0.1);
+  border-radius: 12px;
+}
+
+.painter-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #6B7280;
+  margin-bottom: 8px;
+}
+
+.painter-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.painter-team-image {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #FFFFFF;
+  padding: 4px;
+}
+
+.painter-nickname {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.answer-reveal-guessers {
+  margin-top: 24px;
+}
+
+.guessers-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1F2937;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.guessers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.guesser-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #FFFFFF;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s;
+}
+
+.guesser-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.guesser-rank {
+  font-size: 20px;
+  font-weight: 700;
+  color: #17B26A;
+  min-width: 40px;
+  text-align: center;
+}
+
+.guesser-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.guesser-team-image {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #F9FAFB;
+  padding: 4px;
+  flex-shrink: 0;
+}
+
+.guesser-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.guesser-nickname {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guesser-team {
+  font-size: 12px;
+  color: #6B7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guesser-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.guesser-time {
+  font-size: 14px;
+  font-weight: 600;
+  color: #6B7280;
+}
+
+.guesser-points {
+  font-size: 16px;
+  font-weight: 700;
+  color: #17B26A;
+}
+
+.no-correct-guessers {
+  text-align: center;
+  padding: 40px 20px;
+  color: #9CA3AF;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes containerSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
 /* 響應式 */
 @media (max-width: 480px) {
   .painter-toolbar {
@@ -665,5 +904,475 @@
   .clear-btn {
     padding: 8px 16px;
     font-size: 13px;
+  }
+
+  .answer-reveal-container {
+    padding: 24px 20px;
+    width: 95%;
+  }
+
+  .answer-reveal-word {
+    font-size: 36px;
+  }
+
+  .guesser-item {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .guesser-team-image {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* 遊戲結束畫面 */
+.game-over-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(135deg, rgba(23, 178, 106, 0.95) 0%, rgba(14, 143, 85, 0.95) 100%);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: overlayFadeIn 0.4s ease-out;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.game-over-container {
+  background: #FFFFFF;
+  border-radius: 24px;
+  padding: 40px;
+  max-width: 700px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.3);
+  animation: containerSlideIn 0.5s ease-out;
+}
+
+.game-over-header {
+  text-align: center;
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 3px solid #17B26A;
+}
+
+.game-over-title {
+  font-size: 36px;
+  font-weight: 900;
+  color: #17B26A;
+  margin-bottom: 8px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.game-over-subtitle {
+  font-size: 18px;
+  color: #6B7280;
+  font-weight: 600;
+}
+
+.game-over-section {
+  margin-bottom: 32px;
+}
+
+.section-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1F2937;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 本局排名 */
+.final-ranking {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.final-player-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, #F9FAFB 0%, #FFFFFF 100%);
+  border-radius: 16px;
+  border: 2px solid #E5E7EB;
+  transition: all 0.3s;
+  animation: cardFadeIn 0.5s ease-out;
+}
+
+.final-player-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+
+.final-player-card.my-card {
+  background: linear-gradient(135deg, #D1FAE5 0%, #ECFDF5 100%);
+  border-color: #17B26A;
+  box-shadow: 0 4px 12px rgba(23, 178, 106, 0.2);
+}
+
+.final-player-card.rank-1 {
+  border-color: #FFD700;
+  background: linear-gradient(135deg, #FFF7E6 0%, #FFFBEB 100%);
+}
+
+.final-player-card.rank-2 {
+  border-color: #C0C0C0;
+}
+
+.final-player-card.rank-3 {
+  border-color: #CD7F32;
+}
+
+.rank-badge {
+  font-size: 24px;
+  font-weight: 900;
+  color: #17B26A;
+  min-width: 50px;
+  text-align: center;
+  background: rgba(23, 178, 106, 0.1);
+  padding: 8px 12px;
+  border-radius: 12px;
+}
+
+.rank-1 .rank-badge {
+  color: #FFD700;
+  background: rgba(255, 215, 0, 0.2);
+}
+
+.rank-2 .rank-badge {
+  color: #C0C0C0;
+  background: rgba(192, 192, 192, 0.2);
+}
+
+.rank-3 .rank-badge {
+  color: #CD7F32;
+  background: rgba(205, 127, 50, 0.2);
+}
+
+.final-player-team-img {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #F9FAFB;
+  padding: 6px;
+  flex-shrink: 0;
+}
+
+.final-player-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.final-player-nickname {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.final-player-team {
+  font-size: 14px;
+  color: #6B7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.final-player-score {
+  font-size: 28px;
+  font-weight: 900;
+  color: #17B26A;
+  flex-shrink: 0;
+}
+
+/* 戰隊排名 */
+.team-rankings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.team-rank-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: #FFFFFF;
+  border-radius: 16px;
+  border: 2px solid #E5E7EB;
+  transition: all 0.3s;
+  animation: cardFadeIn 0.5s ease-out;
+}
+
+.team-rank-card.my-team-card {
+  background: linear-gradient(135deg, #FEF3C7 0%, #FEF9C3 100%);
+  border-color: #F59E0B;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+}
+
+.team-rank-position {
+  font-size: 20px;
+  font-weight: 700;
+  color: #6B7280;
+  min-width: 40px;
+  text-align: center;
+}
+
+.team-rank-img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #F9FAFB;
+  padding: 6px;
+  flex-shrink: 0;
+}
+
+.team-rank-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.team-rank-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-rank-score {
+  font-size: 20px;
+  font-weight: 700;
+  color: #17B26A;
+}
+
+.my-contribution {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 8px 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.contribution-label {
+  font-size: 11px;
+  color: #92400E;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.contribution-value {
+  font-size: 18px;
+  font-weight: 900;
+  color: #F59E0B;
+}
+
+/* 全局排行榜 */
+.global-leaderboard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.global-player-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #F9FAFB;
+  border-radius: 12px;
+  transition: all 0.2s;
+  animation: cardFadeIn 0.5s ease-out;
+}
+
+.global-player-row:hover {
+  background: #F3F4F6;
+  transform: translateX(4px);
+}
+
+.global-player-row.highlight {
+  background: linear-gradient(135deg, #D1FAE5 0%, #ECFDF5 100%);
+  border: 2px solid #17B26A;
+  font-weight: 700;
+}
+
+.global-rank {
+  font-size: 16px;
+  font-weight: 700;
+  color: #6B7280;
+  min-width: 40px;
+  text-align: center;
+}
+
+.global-team-img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #FFFFFF;
+  padding: 4px;
+  flex-shrink: 0;
+}
+
+.global-nickname {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-score {
+  font-size: 16px;
+  font-weight: 700;
+  color: #17B26A;
+  min-width: 60px;
+  text-align: right;
+}
+
+.global-games {
+  font-size: 12px;
+  color: #9CA3AF;
+  min-width: 50px;
+  text-align: right;
+}
+
+/* 再來一場按鈕 */
+.game-over-actions {
+  text-align: center;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 2px solid #E5E7EB;
+}
+
+.restart-game-btn {
+  padding: 16px 48px;
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #17B26A 0%, #0E8F55 100%);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(23, 178, 106, 0.3);
+  transition: all 0.3s;
+}
+
+.restart-game-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(23, 178, 106, 0.4);
+  background: linear-gradient(135deg, #0E8F55 0%, #17B26A 100%);
+}
+
+.restart-game-btn:active {
+  transform: translateY(0);
+}
+
+/* 動畫 */
+@keyframes cardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes animate-score {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+    color: #F59E0B;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-score {
+  animation: animate-score 1s ease-in-out infinite;
+}
+
+/* 響應式 - 遊戲結束畫面 */
+@media (max-width: 480px) {
+  .game-over-container {
+    padding: 24px 20px;
+    width: 95%;
+  }
+
+  .game-over-title {
+    font-size: 28px;
+  }
+
+  .game-over-subtitle {
+    font-size: 16px;
+  }
+
+  .section-title {
+    font-size: 18px;
+  }
+
+  .final-player-card {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .rank-badge {
+    font-size: 20px;
+    min-width: 40px;
+  }
+
+  .final-player-team-img {
+    width: 40px;
+    height: 40px;
+  }
+
+  .final-player-nickname {
+    font-size: 16px;
+  }
+
+  .final-player-score {
+    font-size: 24px;
+  }
+
+  .team-rank-card {
+    padding: 12px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .my-contribution {
+    flex-basis: 100%;
+    align-items: flex-start;
+  }
+
+  .restart-game-btn {
+    padding: 14px 36px;
+    font-size: 18px;
   }
 }

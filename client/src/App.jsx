@@ -21,6 +21,8 @@ function App() {
   const [currentColor, setCurrentColor] = useState(COLORS[0]);
   const [currentWidth, setCurrentWidth] = useState(3);
   const [myTeam, setMyTeam] = useState(null); // 我的戰隊資訊
+  const [answerReveal, setAnswerReveal] = useState(null); // 答案公佈資料
+  const [gameOver, setGameOver] = useState(null); // 遊戲結束資料
 
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
@@ -167,10 +169,36 @@ function App() {
       setTimeRemaining(remaining);
     });
 
+    newSocket.on('answer-reveal', (data) => {
+      setAnswerReveal(data);
+      // 6秒後自動關閉答案公佈畫面
+      setTimeout(() => {
+        setAnswerReveal(null);
+      }, 6000);
+    });
+
+    newSocket.on('game-over', (data) => {
+      console.log('遊戲結束！', data);
+      setGameOver(data);
+    });
+
+    newSocket.on('game-restart', ({ round, painterNickname }) => {
+      console.log('遊戲重新開始！');
+      setGameOver(null);
+      setAnswerReveal(null);
+      setCurrentWord(null);
+      setGuessResult(null);
+      setGuessInput('');
+      if (ctxRef.current) {
+        ctxRef.current.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      }
+    });
+
     newSocket.on('round-start', ({ round, painterNickname }) => {
       setCurrentWord(null);
       setGuessResult(null);
       setGuessInput('');
+      setAnswerReveal(null); // 清除答案公佈畫面
       // 不清除聊天訊息，保留歷史記錄
       if (ctxRef.current) {
         ctxRef.current.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -621,8 +649,17 @@ function App() {
       {/* 排行榜 */}
       <div className="leaderboard">
         <div className="leaderboard-header">
-          <span>回合 {roomState.round || 1}</span>
-          <span className="timer">⏱ {timeRemaining}s</span>
+          <div className="word-hint-container">
+            {!isPainter && roomState.wordLength > 0 && (
+              <span className="word-hint-text">
+                {Array(roomState.wordLength).fill('_').join(' ')}
+              </span>
+            )}
+          </div>
+          <div className="round-timer">
+            <span>回合 {roomState.round || 1}</span>
+            <span className="timer">⏱ {timeRemaining}s</span>
+          </div>
         </div>
         {myTeam && (
           <div className="my-team-badge">
@@ -807,6 +844,196 @@ function App() {
         {players.length} 人在房間
         {isPainter ? ' | 你正在畫畫' : ' | 你正在猜題'}
       </div>
+
+      {/* 答案公佈全版畫面 */}
+      {answerReveal && (
+        <div className="answer-reveal-overlay">
+          <div className="answer-reveal-container">
+            <div className="answer-reveal-header">
+              <h2 className="answer-reveal-title">答案揭曉</h2>
+              <div className="answer-reveal-word">{answerReveal.answer}</div>
+            </div>
+
+            <div className="answer-reveal-painter">
+              <p className="painter-label">畫畫者</p>
+              <div className="painter-info">
+                {answerReveal.painter.teamImage && (
+                  <img
+                    src={answerReveal.painter.teamImage}
+                    alt={answerReveal.painter.teamName}
+                    className="painter-team-image"
+                  />
+                )}
+                <span className="painter-nickname">{answerReveal.painter.nickname}</span>
+              </div>
+            </div>
+
+            <div className="answer-reveal-guessers">
+              <h3 className="guessers-title">
+                答對玩家 ({answerReveal.correctGuessers.length}/{answerReveal.totalGuessers})
+              </h3>
+
+              {answerReveal.correctGuessers.length > 0 ? (
+                <div className="guessers-list">
+                  {answerReveal.correctGuessers.map((guesser, idx) => (
+                    <div key={guesser.id} className="guesser-item">
+                      <div className="guesser-rank">#{guesser.order}</div>
+                      <div className="guesser-info">
+                        {guesser.teamImage && (
+                          <img
+                            src={guesser.teamImage}
+                            alt={guesser.teamName}
+                            className="guesser-team-image"
+                          />
+                        )}
+                        <div className="guesser-details">
+                          <span className="guesser-nickname">{guesser.nickname}</span>
+                          <span className="guesser-team">{guesser.teamName}</span>
+                        </div>
+                      </div>
+                      <div className="guesser-stats">
+                        <span className="guesser-time">{guesser.time.toFixed(1)}秒</span>
+                        <span className="guesser-points">+{guesser.points}分</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="no-correct-guessers">
+                  <p>沒有人答對 😢</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 遊戲結束總結畫面 */}
+      {gameOver && (
+        <div className="game-over-overlay">
+          <div className="game-over-container">
+            <div className="game-over-header">
+              <h1 className="game-over-title">🎊 遊戲結束 🎊</h1>
+              <p className="game-over-subtitle">恭喜完成 10 輪遊戲！</p>
+            </div>
+
+            {/* 本局排名 */}
+            <div className="game-over-section">
+              <h2 className="section-title">🏆 本局排名</h2>
+              <div className="final-ranking">
+                {gameOver.finalPlayers.slice(0, 3).map((player, idx) => (
+                  <div
+                    key={player.id}
+                    className={`final-player-card rank-${idx + 1} ${
+                      player.id === socket?.id ? 'my-card' : ''
+                    }`}
+                  >
+                    <div className="rank-badge">#{idx + 1}</div>
+                    {player.teamImage && (
+                      <img
+                        src={player.teamImage}
+                        alt={player.teamName}
+                        className="final-player-team-img"
+                      />
+                    )}
+                    <div className="final-player-info">
+                      <div className="final-player-nickname">{player.nickname}</div>
+                      <div className="final-player-team">{player.teamName}</div>
+                    </div>
+                    <div className="final-player-score">{player.score}分</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 戰隊排名 */}
+            {gameOver.teamRankings && gameOver.teamRankings.length > 0 && (
+              <div className="game-over-section">
+                <h2 className="section-title">🎯 戰隊總排名</h2>
+                <div className="team-rankings">
+                  {gameOver.teamRankings.slice(0, 3).map((team, idx) => {
+                    const myContribution = gameOver.finalPlayers.find(
+                      p => p.id === socket?.id && p.teamId === team.teamId
+                    );
+                    return (
+                      <div
+                        key={team.teamId}
+                        className={`team-rank-card ${
+                          myContribution ? 'my-team-card' : ''
+                        }`}
+                      >
+                        <div className="team-rank-position">#{idx + 1}</div>
+                        {team.teamImage && (
+                          <img
+                            src={team.teamImage}
+                            alt={team.teamName}
+                            className="team-rank-img"
+                          />
+                        )}
+                        <div className="team-rank-info">
+                          <div className="team-rank-name">{team.teamName}</div>
+                          <div className="team-rank-score">{team.totalScore}分</div>
+                        </div>
+                        {myContribution && (
+                          <div className="my-contribution">
+                            <span className="contribution-label">你的貢獻</span>
+                            <span className="contribution-value animate-score">
+                              +{myContribution.score}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 全局排行榜 */}
+            {gameOver.globalLeaderboard && gameOver.globalLeaderboard.length > 0 && (
+              <div className="game-over-section">
+                <h2 className="section-title">🌟 全局排行榜</h2>
+                <div className="global-leaderboard">
+                  {gameOver.globalLeaderboard.slice(0, 5).map((player, idx) => (
+                    <div
+                      key={`global-${idx}`}
+                      className={`global-player-row ${
+                        player.nickname === nickname ? 'highlight' : ''
+                      }`}
+                    >
+                      <span className="global-rank">#{idx + 1}</span>
+                      {player.teamImage && (
+                        <img
+                          src={player.teamImage}
+                          alt={player.teamName}
+                          className="global-team-img"
+                        />
+                      )}
+                      <span className="global-nickname">{player.nickname}</span>
+                      <span className="global-score">{player.totalScore}分</span>
+                      <span className="global-games">({player.gamesPlayed}局)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 再來一場按鈕 */}
+            <div className="game-over-actions">
+              <button
+                className="restart-game-btn"
+                onClick={() => {
+                  if (socket) {
+                    socket.emit('restart-game');
+                  }
+                }}
+              >
+                🎮 再來一場
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

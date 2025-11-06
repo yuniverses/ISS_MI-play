@@ -96,6 +96,15 @@ function getTeamFromQuery(query) {
 // 房間管理
 const rooms = new Map();
 
+// 全局排行榜（記錄所有玩過的玩家）
+const globalLeaderboard = new Map(); // key: nickname, value: { nickname, teamId, teamName, teamImage, totalScore, gamesPlayed }
+
+// 戰隊統計
+const teamStats = new Map(); // key: teamId, value: { teamId, teamName, teamImage, totalScore, playerCount }
+
+// 遊戲設置
+const MAX_ROUNDS = 10; // 最大回合數
+
 // 題庫
 const words = [
   '西瓜', '貓', '狗', '飛機', '蘋果', '香蕉', '車子', '太陽', '月亮',
@@ -117,7 +126,8 @@ function getOrCreateRoom() {
       startedAt: null,
       timer: null,
       scores: new Map(),
-      strokes: []
+      strokes: [],
+      correctGuessers: [] // 追蹤每回合答對的玩家詳細資訊
     });
   }
   return rooms.get(roomId);
@@ -160,7 +170,8 @@ io.on('connection', (socket) => {
       room.round = 1;
       room.startedAt = Date.now();
       room.strokes = [];
-      
+      room.correctGuessers = []; // 清空答對名單
+
       // 開始30秒倒計時
       startTimer(room);
     }
@@ -184,7 +195,8 @@ io.on('connection', (socket) => {
       currentPainter: room.currentPainter,
       round: room.round,
       timeRemaining: room.timer ? Math.max(0, 30 - Math.floor((Date.now() - room.startedAt) / 1000)) : 30,
-      strokes: room.strokes
+      strokes: room.strokes,
+      wordLength: room.currentWord?.length || 0
     });
 
     // 如果是畫畫者，發送題目
@@ -240,31 +252,53 @@ io.on('connection', (socket) => {
 
     const normalizedGuess = guess.trim().toLowerCase();
     const normalizedWord = room.currentWord.toLowerCase();
+    const isCorrect = normalizedGuess === normalizedWord;
+
+    // 如果答對，打碼答案；如果答錯，顯示原始答案
+    const displayText = isCorrect ? '✓✓✓' : guess;
 
     // 向所有人顯示一個短暫的懸浮泡泡（非聊天記錄）
     const guesserPlayer = room.players.find(p => p.id === socket.id);
     io.to(room.id).emit('guess-bubble', {
       userId: socket.id,
       nickname: guesserPlayer?.nickname || '玩家',
-      text: guess,
-      correct: normalizedGuess === normalizedWord
+      text: displayText,
+      correct: isCorrect
     });
 
-    if (normalizedGuess === normalizedWord) {
+    if (isCorrect) {
       // 答對了！
       const timeRemaining = room.timer ? Math.max(0, 30 - Math.floor((Date.now() - room.startedAt) / 1000)) : 0;
+      const elapsedTime = 30 - timeRemaining;
       const points = 50 + (timeRemaining * 2);
-      
+
+      // 找到猜題者資訊
+      const guesser = room.players.find(p => p.id === socket.id);
+
+      // 加入答對名單，記錄詳細資訊
+      if (!room.correctGuessers.find(g => g.id === socket.id)) {
+        room.correctGuessers.push({
+          id: socket.id,
+          nickname: guesser?.nickname || '玩家',
+          teamId: guesser?.teamId,
+          teamName: guesser?.teamName,
+          teamImage: guesser?.teamImage,
+          teamColor: guesser?.teamColor,
+          time: elapsedTime,
+          points: points,
+          order: room.correctGuessers.length + 1
+        });
+      }
+
       // 給猜題者加分
       const guesserScore = room.scores.get(socket.id) || 0;
       room.scores.set(socket.id, guesserScore + points);
-      
+
       // 給畫畫者加分
       const painterScore = room.scores.get(room.currentPainter) || 0;
       room.scores.set(room.currentPainter, painterScore + 30);
 
       // 更新玩家分數
-      const guesser = room.players.find(p => p.id === socket.id);
       const painter = room.players.find(p => p.id === room.currentPainter);
       if (guesser) guesser.score = room.scores.get(socket.id);
       if (painter) painter.score = room.scores.get(room.currentPainter);
@@ -293,10 +327,23 @@ io.on('connection', (socket) => {
         currentPainter: room.currentPainter,
         round: room.round,
         timeRemaining: timeRemaining,
-        strokes: room.strokes
+        strokes: room.strokes,
+        wordLength: room.currentWord?.length || 0
       });
 
       console.log(`${guesser?.nickname} 猜對了！答案是 ${room.currentWord}`);
+
+      // 檢查是否所有猜題者都答對了
+      const guessersCount = room.players.filter(p => p.id !== room.currentPainter).length;
+      if (room.correctGuessers.length >= guessersCount && guessersCount > 0) {
+        console.log('所有猜題者都答對了，提早結束回合');
+        // 停止計時器並顯示答案
+        if (room.timer) {
+          clearInterval(room.timer);
+          room.timer = null;
+        }
+        showAnswerReveal(room);
+      }
     } else {
       socket.emit('guess-result', { correct: false, message: '答案不對，再試試看！' });
     }
@@ -316,18 +363,50 @@ io.on('connection', (socket) => {
       if (remaining <= 0) {
         clearInterval(room.timer);
         room.timer = null;
-        
-        // 回合結束，切換到下一個畫畫者
-        nextRound(room);
+
+        // 回合結束，顯示答案公佈
+        showAnswerReveal(room);
       } else {
         io.to(room.id).emit('timer-update', { remaining });
       }
     }, 1000);
   }
 
+  // 顯示答案公佈畫面
+  function showAnswerReveal(room) {
+    const painter = room.players.find(p => p.id === room.currentPainter);
+
+    // 發送答案公佈資料
+    io.to(room.id).emit('answer-reveal', {
+      answer: room.currentWord,
+      painter: {
+        id: painter?.id,
+        nickname: painter?.nickname || '畫畫者',
+        teamName: painter?.teamName,
+        teamImage: painter?.teamImage
+      },
+      correctGuessers: room.correctGuessers,
+      totalGuessers: room.players.filter(p => p.id !== room.currentPainter).length
+    });
+
+    console.log(`公佈答案：${room.currentWord}，${room.correctGuessers.length} 人答對`);
+
+    // 6秒後進入下一回合
+    setTimeout(() => {
+      nextRound(room);
+    }, 6000);
+  }
+
   // 下一回合
   function nextRound(room) {
     if (room.players.length === 0) return;
+
+    // 檢查是否達到最大輪數
+    if (room.round >= MAX_ROUNDS) {
+      console.log(`遊戲結束！已完成 ${MAX_ROUNDS} 輪`);
+      endGame(room);
+      return;
+    }
 
     // 找到當前畫畫者的索引
     const currentIndex = room.players.findIndex(p => p.id === room.currentPainter);
@@ -337,6 +416,7 @@ io.on('connection', (socket) => {
     room.round++;
     room.startedAt = Date.now();
     room.strokes = [];
+    room.correctGuessers = []; // 清空答對名單
 
     // 通知所有人新回合開始
     io.to(room.id).emit('round-start', {
@@ -365,12 +445,176 @@ io.on('connection', (socket) => {
       currentPainter: room.currentPainter,
       round: room.round,
       timeRemaining: 30,
-      strokes: []
+      strokes: [],
+      wordLength: room.currentWord?.length || 0
     });
 
     // 重新開始計時
     startTimer(room);
   }
+
+  // 遊戲結束
+  function endGame(room) {
+    // 停止計時器
+    if (room.timer) {
+      clearInterval(room.timer);
+      room.timer = null;
+    }
+
+    // 計算本局排名
+    const finalPlayers = room.players.map(p => ({
+      id: p.id,
+      nickname: p.nickname,
+      teamId: p.teamId,
+      teamName: p.teamName,
+      teamImage: p.teamImage,
+      teamColor: p.teamColor,
+      score: room.scores.get(p.id) || 0
+    })).sort((a, b) => b.score - a.score);
+
+    // 更新全局排行榜
+    finalPlayers.forEach(player => {
+      const existing = globalLeaderboard.get(player.nickname);
+      if (existing) {
+        existing.totalScore += player.score;
+        existing.gamesPlayed++;
+      } else {
+        globalLeaderboard.set(player.nickname, {
+          nickname: player.nickname,
+          teamId: player.teamId,
+          teamName: player.teamName,
+          teamImage: player.teamImage,
+          totalScore: player.score,
+          gamesPlayed: 1
+        });
+      }
+    });
+
+    // 更新戰隊統計
+    const teamScores = new Map();
+    finalPlayers.forEach(player => {
+      const current = teamScores.get(player.teamId) || 0;
+      teamScores.set(player.teamId, current + player.score);
+    });
+
+    teamScores.forEach((score, teamId) => {
+      const teamInfo = TEAMS[teamId];
+      const existing = teamStats.get(teamId);
+      if (existing) {
+        existing.totalScore += score;
+        existing.playerCount = (existing.playerCount || 0) +
+          finalPlayers.filter(p => p.teamId === teamId).length;
+      } else {
+        teamStats.set(teamId, {
+          teamId: teamId,
+          teamName: teamInfo?.name || teamId,
+          teamImage: teamInfo?.image || '',
+          totalScore: score,
+          playerCount: finalPlayers.filter(p => p.teamId === teamId).length
+        });
+      }
+    });
+
+    // 獲取全局排行榜前10名
+    const globalTop10 = Array.from(globalLeaderboard.values())
+      .sort((a, b) => b.totalScore - a.totalScore)
+      .slice(0, 10);
+
+    // 獲取戰隊排名
+    const teamRankings = Array.from(teamStats.values())
+      .sort((a, b) => b.totalScore - a.totalScore);
+
+    // 計算本局戰隊得分
+    const currentTeamScores = Array.from(teamScores.entries()).map(([teamId, score]) => {
+      const teamInfo = TEAMS[teamId];
+      return {
+        teamId,
+        teamName: teamInfo?.name || teamId,
+        teamImage: teamInfo?.image || '',
+        score
+      };
+    }).sort((a, b) => b.score - a.score);
+
+    // 發送遊戲結束事件
+    io.to(room.id).emit('game-over', {
+      finalPlayers,
+      globalLeaderboard: globalTop10,
+      teamRankings,
+      currentTeamScores
+    });
+
+    console.log('遊戲結束，排行榜已更新');
+  }
+
+  // 重置遊戲
+  function restartGame(room) {
+    // 保留玩家，但重置分數和狀態
+    room.round = 0;
+    room.currentPainter = null;
+    room.currentWord = null;
+    room.startedAt = null;
+    room.strokes = [];
+    room.correctGuessers = [];
+
+    // 不清空分數，繼續累積
+    // 如果要清空分數，取消下面的註釋
+    // room.scores.clear();
+    // room.players.forEach(p => {
+    //   room.scores.set(p.id, 0);
+    //   p.score = 0;
+    // });
+
+    if (room.players.length > 0) {
+      // 開始新一局
+      room.currentPainter = room.players[0].id;
+      room.currentWord = words[Math.floor(Math.random() * words.length)];
+      room.round = 1;
+      room.startedAt = Date.now();
+
+      // 通知所有人新遊戲開始
+      io.to(room.id).emit('game-restart', {
+        round: room.round,
+        painterId: room.currentPainter,
+        painterNickname: room.players[0].nickname
+      });
+
+      // 告訴畫畫者題目
+      io.to(room.currentPainter).emit('your-turn-to-draw', {
+        word: room.currentWord
+      });
+
+      // 更新房間狀態
+      io.to(room.id).emit('room-state', {
+        players: room.players.map(p => ({
+          id: p.id,
+          nickname: p.nickname,
+          teamId: p.teamId,
+          teamName: p.teamName,
+          teamImage: p.teamImage,
+          teamColor: p.teamColor,
+          score: room.scores.get(p.id) || 0,
+          role: getPlayerRole(room, p.id)
+        })),
+        currentPainter: room.currentPainter,
+        round: room.round,
+        timeRemaining: 30,
+        strokes: [],
+        wordLength: room.currentWord?.length || 0
+      });
+
+      // 開始計時
+      startTimer(room);
+    }
+
+    console.log('遊戲重新開始');
+  }
+
+  // 處理再來一場請求
+  socket.on('restart-game', () => {
+    const room = getOrCreateRoom();
+    console.log(`${socket.id} 請求重新開始遊戲`);
+    restartGame(room);
+  });
 
   // 斷線處理
   socket.on('disconnect', () => {
@@ -410,7 +654,8 @@ io.on('connection', (socket) => {
         currentPainter: room.currentPainter,
         round: room.round,
         timeRemaining: room.timer ? Math.max(0, 30 - Math.floor((Date.now() - room.startedAt) / 1000)) : 30,
-        strokes: room.strokes
+        strokes: room.strokes,
+        wordLength: room.currentWord?.length || 0
       });
     }
 
