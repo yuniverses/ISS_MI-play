@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import './App.css';
+import TeamLanyard from './components/TeamLanyard';
 
 const COLORS = ['#000000', '#17B26A', '#FF6B6B', '#4ECDC4', '#FFE66D', '#A8E6CF'];
 const COLOR_NAMES = ['黑色', '綠色', '紅色', '青色', '黃色', '淺綠'];
@@ -600,27 +601,32 @@ function App() {
 
   if (!roomState) {
     const teamInfo = getCurrentTeamInfo();
+    const urlParams = new URLSearchParams(window.location.search);
+    const teamId = urlParams.get('team') || urlParams.get('drink') || 'pearl-tea-latte';
+
     return (
       <div className="app">
         <div className="join-screen">
+          {/* 幾何裝飾元素 */}
+          <div className="geometric-shapes">
+            <div className="geometric-shape shape-circle shape-1"></div>
+            <div className="geometric-shape shape-square shape-2"></div>
+            <div className="geometric-shape shape-diamond shape-3"></div>
+            <div className="geometric-shape shape-circle shape-4"></div>
+            <div className="geometric-shape shape-square shape-5"></div>
+            <div className="geometric-shape shape-diamond shape-6"></div>
+          </div>
+
           <h1 className="title">迷玩｜同杯遊戲室</h1>
-          {teamInfo && (
-            <div className="team-preview">
-              <img 
-                src={teamInfo.image}
-                alt={teamInfo.name} 
-                className="team-preview-image"
-                onError={(e) => {
-                  console.error('圖片載入失敗:', teamInfo.image);
-                  e.target.style.display = 'none';
-                }}
-                onLoad={() => {
-                  console.log('圖片載入成功');
-                }}
-              />
-              <p className="team-preview-name">{teamInfo.name}</p>
-            </div>
-          )}
+
+          {/* 3D 掛繩卡片效果 */}
+          <div className="lanyard-container">
+            <TeamLanyard
+              teamId={teamId}
+              playerName={nickname || '玩家'}
+            />
+          </div>
+
           <div className="input-group">
             <input
               type="text"
@@ -646,7 +652,8 @@ function App() {
 
   return (
     <div className="app">
-      {/* 排行榜 */}
+      {/* 排行榜 - 遊戲結束時隱藏 */}
+      {!gameOver && (
       <div className="leaderboard">
         <div className="leaderboard-header">
           <div className="word-hint-container">
@@ -703,8 +710,10 @@ function App() {
           ))}
         </div>
       </div>
+      )}
 
-      {/* 畫布區域 */}
+      {/* 畫布區域 - 遊戲結束時隱藏 */}
+      {!gameOver && (
       <div className="canvas-container">
         <canvas
           ref={canvasRef}
@@ -776,8 +785,10 @@ function App() {
           </button>
         )}
       </div>
+      )}
 
-      {/* 底部操作區 */}
+      {/* 底部操作區 - 遊戲結束時隱藏 */}
+      {!gameOver && (
       <div className="bottom-bar">
         {isPainter ? (
           /* 畫畫者工具列 */
@@ -838,12 +849,15 @@ function App() {
           </div>
         )}
       </div>
+      )}
 
-      {/* 玩家列表（可選，顯示在側邊或底部） */}
+      {/* 玩家列表（可選，顯示在側邊或底部） - 遊戲結束時隱藏 */}
+      {!gameOver && (
       <div className="players-info">
         {players.length} 人在房間
         {isPainter ? ' | 你正在畫畫' : ' | 你正在猜題'}
       </div>
+      )}
 
       {/* 答案公佈全版畫面 */}
       {answerReveal && (
@@ -909,40 +923,115 @@ function App() {
       )}
 
       {/* 遊戲結束總結畫面 */}
-      {gameOver && (
+      {gameOver && (() => {
+        // 計算用戶的表現
+        const currentPlayer = gameOver.finalPlayers.find(p => p.id === socket?.id);
+        const userRank = gameOver.finalPlayers.findIndex(p => p.id === socket?.id) + 1;
+        const totalPlayers = gameOver.finalPlayers.length;
+
+        // 生成動態標題
+        let title = '🎊 遊戲結束 🎊';
+        let subtitle = '恭喜完成 10 輪遊戲！';
+
+        if (currentPlayer) {
+          const score = currentPlayer.score;
+          const avgScore = score / 10; // 平均每輪得分
+
+          // 根據排名和得分表現生成標題
+          if (userRank === 1) {
+            title = '🏆 冠軍誕生！';
+            subtitle = avgScore > 80 ? '你是真正的迷鑑賞家！' : '你的表現真是太棒了！';
+          } else if (userRank === 2) {
+            title = '🥈 亞軍好手！';
+            subtitle = avgScore > 70 ? '你真是一位迷鑑賞家！' : '差一點就是冠軍了！';
+          } else if (userRank === 3) {
+            title = '🥉 季軍達人！';
+            subtitle = avgScore > 60 ? '你的鑑賞力不容小覷！' : '再接再厲，下次更好！';
+          } else if (avgScore > 70) {
+            title = '⭐ 鑑賞高手！';
+            subtitle = '你真是一位迷鑑賞家！';
+          } else if (avgScore > 50) {
+            title = '🎨 表現優異！';
+            subtitle = '你是個有潛力的迷畫家！';
+          } else if (avgScore > 30) {
+            title = '👍 持續進步！';
+            subtitle = '繼續努力，你會越來越厲害！';
+          } else {
+            title = '🌟 感謝參與！';
+            subtitle = '享受遊戲最重要！';
+          }
+        }
+
+        return (
         <div className="game-over-overlay">
+          {/* 幾何裝飾元素 */}
+          <div className="geometric-shapes">
+            <div className="geometric-shape shape-circle shape-1"></div>
+            <div className="geometric-shape shape-square shape-2"></div>
+            <div className="geometric-shape shape-diamond shape-3"></div>
+            <div className="geometric-shape shape-circle shape-4"></div>
+            <div className="geometric-shape shape-square shape-5"></div>
+            <div className="geometric-shape shape-diamond shape-6"></div>
+          </div>
+
           <div className="game-over-container">
             <div className="game-over-header">
-              <h1 className="game-over-title">🎊 遊戲結束 🎊</h1>
-              <p className="game-over-subtitle">恭喜完成 10 輪遊戲！</p>
+              <h1 className="game-over-title">{title}</h1>
+              <p className="game-over-subtitle">{subtitle}</p>
             </div>
 
-            {/* 本局排名 */}
+            {/* 本局排名 - 橫向滾動掛繩卡片展示 */}
             <div className="game-over-section">
               <h2 className="section-title">🏆 本局排名</h2>
-              <div className="final-ranking">
-                {gameOver.finalPlayers.slice(0, 3).map((player, idx) => (
-                  <div
-                    key={player.id}
-                    className={`final-player-card rank-${idx + 1} ${
-                      player.id === socket?.id ? 'my-card' : ''
-                    }`}
-                  >
-                    <div className="rank-badge">#{idx + 1}</div>
-                    {player.teamImage && (
-                      <img
-                        src={player.teamImage}
-                        alt={player.teamName}
-                        className="final-player-team-img"
+              <div
+                className="final-ranking-scroll"
+                ref={(el) => {
+                  if (el && socket?.id) {
+                    // 自動滾動到當前用戶位置
+                    const userIndex = gameOver.finalPlayers.findIndex(p => p.id === socket.id);
+                    if (userIndex !== -1) {
+                      setTimeout(() => {
+                        const cardWidth = 260; // 卡片寬度 + 間距
+                        const scrollPosition = userIndex * cardWidth - (el.clientWidth / 2) + (cardWidth / 2);
+                        el.scrollTo({
+                          left: Math.max(0, scrollPosition),
+                          behavior: 'smooth'
+                        });
+                      }, 500); // 延遲以確保渲染完成
+                    }
+                  }
+                }}
+              >
+                {gameOver.finalPlayers.map((player, idx) => {
+                  const medals = ['🥇', '🥈', '🥉'];
+                  const isCurrentUser = player.id === socket?.id;
+                  return (
+                    <div
+                      key={player.id}
+                      className={`final-lanyard-wrapper ${isCurrentUser ? 'current-user' : ''}`}
+                      data-rank={idx + 1}
+                    >
+                      {/* 排名徽章 */}
+                      <div className="rank-number">#{idx + 1}</div>
+
+                      {/* 獎牌徽章（前三名） */}
+                      {idx < 3 && (
+                        <div className="medal-badge">{medals[idx]}</div>
+                      )}
+
+                      {/* 掛繩卡片 */}
+                      <TeamLanyard
+                        teamId={player.teamId}
+                        playerName={player.nickname}
                       />
-                    )}
-                    <div className="final-player-info">
-                      <div className="final-player-nickname">{player.nickname}</div>
-                      <div className="final-player-team">{player.teamName}</div>
+
+                      {/* 分數標籤 */}
+                      <div className="lanyard-score-badge">
+                        {player.score} 分
+                      </div>
                     </div>
-                    <div className="final-player-score">{player.score}分</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -1033,7 +1122,8 @@ function App() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
